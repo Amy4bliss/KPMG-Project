@@ -1,1 +1,89 @@
+* The first task in the KPMG sprocket Virtual Internship is Data Quality Assesment of
+existing records; customerdemographics, customeraddress, transactions*/
+-- First assessment: DATA COMPLETNESS CHECK
+SELECT
+	COUNT(customer_id) AS customer_id,
+	COUNT(address) AS address,
+	COUNT(postcode) AS postcode,
+	COUNT(state) AS state,
+	COUNT(country) AS country,
+	COUNT(property_valuation) AS property_valuation
+FROM
+	KPMG.customeraddress;
+
+SELECT
+	COUNT(customer_id) AS customer_id,
+	-- To count checking for missing data
+	COUNT(first_name) AS first_name,
+	COUNT(last_name) AS last_name,
+	COUNT(gender) AS gender,
+	COUNT(past_3_years_bike_related_purchases) AS past_3_years_bike_related_purchases,
+	COUNT(DOB) AS DOB,
+	COUNT(job_title) AS job_title,
+	COUNT(job_industry_category) AS job_industry_category,
+	COUNT(wealth_segment) AS wealth_segment,
+	COUNT(deceased_indicator) AS deceased_indicator,
+	COUNT(owns_car) AS owns_car,
+	COUNT(tenure) AS tenure
+FROM
+	KPMG.customerdemographic;
+
+SELECT
+	COUNT(transaction_id) AS transaction_id,
+	-- To count checking for missing data
+	COUNT(product_id) AS product_id,
+	COUNT(customer_id) AS customer_id,
+	COUNT(transaction_date) AS transaction_date,
+	COUNT(online_order) AS online_order,
+	COUNT(order_status) AS order_status,
+	COUNT(brand) AS brand,
+	COUNT(product_line) AS product_line,
+	COUNT(product_class) AS product_class,
+	COUNT(list_price) AS list_price,
+	COUNT(standard_cost) AS standard_cost,
+	COUNT(product_first_sold_date) AS product_first_sold_date
+FROM
+	KPMG.transactions;
+-- some missing records detected
+
+
+
+-- Second assesment: DUPLICATE CHECK
+SELECTcustomer_id,
+	    COUNT(customer_id)
+FROM KPMG.customerdemographic
+GROUP BY customer_id
+HAVING COUNT(customer_id) > 1;
+
+SELECT customer_id,
+        COUNT(customer_id)
+FROM KPMG.customeraddress
+GROUP BY customer_id
+HAVING COUNT(customer_id) > 1;
+
+SELECT transaction_id,
+	      COUNT(transaction_id)
+FROM KPMG.transactions
+GROUP BY transaction_id
+HAVING COUNT(transaction_id) > 1;
+-- No duplicates found
+
+
+
+-- Third assesment: column data type
+SELECT DATA_TYPE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'KPMG'
+	AND TABLE_NAME = 'customeraddress';
+
+SELECT DATA_TYPE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'KPMG'
+	AND TABLE_NAME = 'customerdemographic';
+
+SELECT DATA_TYPE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'KPMG'
+  AND TABLE_NAME = 'transactions'
+-- wronng data type detected
 
