@@ -1,0 +1,187 @@
+USE KPMG;
+/* The second Task for the Sprocket project involves three phases;
+Data Exploration, Model development and interpretation using the 3 existing datasets */
+-- STEP 1: cleaning and preparation of data for analysis  
+
+UPDATE KPMG.customerdemographic -- To update invalid date input (1843-12-21)
+SET dob = NULL
+WHERE dob = '1843-12-21'; 
+
+UPDATE KPMG.customerdemographic -- To modify the data Format 
+SET dob = STR_TO_DATE(DOB,'%d/%m/%Y');
+
+ALTER TABLE KPMG.customerdemographic  -- To alter column data type
+MODIFY customer_id INT, 
+MODIFY dob DATE;
+
+UPDATE KPMG.transactions -- To modify date Format
+SET transaction_date = STR_TO_DATE(transaction_date,'%d/%m/%Y');
+
+ALTER TABLE KPMG.transactions -- To alter column data type
+MODIFY transaction_date DATE;
+
+UPDATE KPMG.customerdemographic -- To remove inconsistent gender data values 
+SET gender = ( 
+             CASE WHEN gender LIKE 'F%' THEN 'female' 
+                  WHEN gender LIKE 'M%' THEN 'male'
+                  ELSE 'unspecified'
+                  END )
+WHERE gender LIKE 'F%'
+  OR gender LIKE 'M%'
+  OR gender LIKE 'U%';
+  
+
+
+
+/* STEP 2; Exploratory Data Analysis of existing customer dataset to
+determine customer trends & behaviour */
+
+CREATE TEMPORARY TABLE existing_customer_records 
+SELECT t.*,
+    		(list_price - standard_cost) AS profit, -- To insert profit column
+    		gender,
+    		TIMESTAMPDIFF(YEAR,dob,CURDATE()) AS age, -- To insert age column
+            address,
+            postcode, 
+            state,
+            country,
+            property_valuation,
+            job_industry_category,
+            job_title,
+            wealth_segment,
+            past_3_years_bike_related_purchases,
+           owns_car,
+            tenure
+  FROM KPMG.transactions AS t
+  INNER JOIN KPMG.customerdemographic AS c1 
+  USING (customer_id)
+  INNER JOIN KPMG.customeraddress AS c2 
+  USING (customer_id);
+
+  SELECT CASE WHEN 20>= age AND age <=24 THEN '20 - 24'    -- To compute sum of profit by age_group & wealth_segment 
+              WHEN 25>= age AND age <=29 THEN '25 - 29'
+              WHEN 30>= age AND age <=34 THEN '30 - 34'
+              WHEN 35>= age AND age <=39 THEN '35 - 39'
+              WHEN 40>= age AND age <=44 THEN '40 - 44'
+              WHEN 45>= age AND age <=49 THEN '45 - 49'
+              WHEN 50>= age AND age <=54 THEN '50 - 54'
+              WHEN 55>= age AND age <=59 THEN '55 - 59'
+              WHEN 60>= age AND age <=64 THEN '60 - 64'
+              WHEN 65>= age AND age <=69 THEN '65 - 69'
+              WHEN 70>= age AND age <=74 THEN '70 - 74'
+              WHEN 75>= age AND age <=79 THEN '75 - 79'
+              WHEN 80>= age AND age <=84 THEN '80 - 84'
+              WHEN 84>= age AND age <=89 THEN '84 - 89'
+              WHEN 90>= age AND age <=94 THEN '90 - 94'
+              ELSE 'UNKNOWN' END AS age_group,
+              wealth_segment,
+              ROUND(SUM(profit), 2) as profit  
+FROM existing_customer_records
+GROUP BY age_group, wealth_segment
+ORDER BY age_group;
+
+SELECT job_industry_category,  -- To compute profit by job_industry_category
+		    ROUND(SUM(profit),2)
+FROM existing_customer_data
+GROUP BY job_industry_category 
+ORDER BY ROUND(SUM(profit),2) DESC;
+
+SELECT state,      -- To compute profit by state
+		    COUNT(transaction_id),
+        ROUND(SUM(profit),2)
+FROM existing_customer_data
+GROUP BY state
+ORDER BY ROUND(SUM(profit),2) DESC;
+
+SELECT gender,      -- To compute sales by gender
+		    SUM(past_3_years_bike_related_purchases)
+FROM existing_customer_data
+GROUP BY gender;
+
+SELECT state,      -- To compute percentage ownership of car by customers grouped by state
+    		SUM(CASE WHEN owns_car = 'yes' THEN 1
+    		          ELSE 0 END) AS car_ownership,
+    		SUM(CASE WHEN owns_car = 'yes' THEN 0
+    			        ELSE 1 END) AS no_car_ownership
+FROM existing_customer_data
+GROUP BY state;
+
+
+
+  
+/* STEP 3; MODEL DEVELOPMENT - RFM(Recency, Frequency & Monetary) Model is employed in marketing to 
+identify the most valuable customers */
+-- BUILDING RFM MODEL
+
+SELECT customer_id, -- To compute most recent transaction date of each customer
+		    MAX(transaction_date) AS most_recent_transaction_date  
+FROM existing_customer_data
+GROUP BY customer_id
+ORDER BY MAX(transaction_date) DESC;
+
+SELECT customer_id, -- To compute recency
+		    TIMESTAMPDIFF(DAY, max_transaction_date, '2017-12-30') AS R
+FROM (
+    SELECT customer_id, MAX(transaction_date) AS max_transaction_date
+    FROM existing_customer_data
+    GROUP BY customer_id
+) AS most_recent_transaction_date
+ORDER BY customer_id;
+
+SELECT customer_id, -- To compute frequency
+		    COUNT(transaction_id) AS F
+FROM existing_customer_data
+GROUP BY customer_id
+ORDER BY customer_id;
+
+SELECT customer_id, -- To compute monetary
+		    ROUND(SUM(profit),0) AS M
+FROM existing_customer_data
+GROUP BY customer_id;
+
+WITH rfm_computation AS -- To compute RFM score
+(
+	SELECT customer_id,
+          TIMESTAMPDIFF(DAY, MAX(transaction_date), '2017-12-30') AS recency,
+          COUNT(transaction_date) AS frequency,
+          ROUND(SUM(profit),0) AS monetary
+FROM existing_customer_data
+GROUP BY customer_id
+)
+SELECT customer_id,
+		    NTILE(4) OVER (ORDER BY recency) AS R_score,
+        NTILE(4) OVER (ORDER BY frequency) AS F_score,
+        NTILE(4) OVER (ORDER BY monetary) AS M_score
+FROM rfm_computation
+GROUP BY customer_id
+ORDER BY customer_id;
+
+
+WITH rfm_scoreboard AS  --To compute rfm_class
+(
+	SELECT customer_id,
+    			NTILE(4) OVER (ORDER BY recency) AS R_score,
+    			NTILE(4) OVER (ORDER BY frequency) AS F_score,
+    			NTILE(4) OVER (ORDER BY monetary) AS M_score
+	FROM (SELECT customer_id,
+				TIMESTAMPDIFF(DAY, MAX(transaction_date), '2017-12-30') AS recency,
+				COUNT(transaction_date) AS frequency,
+				ROUND(SUM(profit),0) AS monetary
+		FROM existing_customer_data
+		GROUP BY customer_id) AS rfm_computaion
+)
+SELECT customer_id,
+  		    R_score,
+          F_score,
+          M_score,
+CASE WHEN (R_score + F_score + M_score)/3 <= 1 THEN 'Silver_customer'
+  		WHEN (R_score + F_score + M_score)/3 <= 2 THEN 'Gold_customer'
+      WHEN (R_score + F_score + M_score)/3 <= 3 THEN 'Platinum_customer'
+      WHEN (R_score + F_score + M_score)/3 <= 4 THEN 'Diamond_customer'
+      END AS class
+FROM rfm_scoreboard
+GROUP BY customer_id
+ORDER BY class;
+
+
+        
